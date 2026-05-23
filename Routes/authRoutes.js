@@ -74,11 +74,14 @@ router.post("/register", async (req, res) => {
     });
 
   } catch (error) {
+
+    console.log("REGISTER ERROR:", error);
+    
     res.status(500).json({
-      message: "Server error",
-      error: error.message
+    message: error.message || "Register failed"
     });
-  }
+    
+    }
 });
 
 /* VERIFY OTP */
