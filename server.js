@@ -10,9 +10,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const authRoutes = require("./routes/authRoutes");
-const taskRoutes = require("./routes/taskRoutes");
-const supportRoutes = require("./routes/supportRoutes");
+const authRoutes = require("./Routes/authRoutes");
+const taskRoutes = require("./Routes/taskRoutes");
+const supportRoutes = require("./Routes/supportRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
