@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const dns = require("dns");
 const User = require("../models/User");
 
 const router = express.Router();
@@ -12,11 +13,20 @@ const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
-  family: 4,
+
+  lookup: (hostname, options, callback) => {
+    return dns.lookup(hostname, { family: 4 }, callback);
+  },
+
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   },
+
+  tls: {
+    servername: "smtp.gmail.com"
+  },
+
   connectionTimeout: 30000,
   greetingTimeout: 30000,
   socketTimeout: 30000
