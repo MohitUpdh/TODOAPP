@@ -1,36 +1,31 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
-const dns = require("dns");
+const { Resend } = require("resend");
 const User = require("../models/User");
 
 const router = express.Router();
 
-/* ================= EMAIL SENDER ================= */
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
+/* ================= SEND EMAIL FUNCTION ================= */
 
-  lookup: (hostname, options, callback) => {
-    return dns.lookup(hostname, { family: 4 }, callback);
-  },
+async function sendEmail(to, subject, html) {
+  const { data, error } = await resend.emails.send({
+    from: "DailyTasks <onboarding@resend.dev>",
+    to: to,
+    subject: subject,
+    html: html
+  });
 
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
+  if (error) {
+    console.log("RESEND EMAIL ERROR:", error);
+    throw new Error(error.message || "Email send failed");
+  }
 
-  tls: {
-    servername: "smtp.gmail.com"
-  },
-
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 30000
-});
+  console.log("EMAIL SENT:", data);
+  return data;
+}
 
 /* ================= REGISTER WITH OTP ================= */
 
@@ -79,19 +74,18 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    let mailInfo = await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "DailyTasks Email Verification OTP",
-      html: `
+    await sendEmail(
+      email,
+      "DailyTasks Email Verification OTP",
+      `
+      <div style="font-family:Arial,sans-serif;padding:20px;">
         <h2>DailyTasks Verification</h2>
         <p>Your OTP is:</p>
-        <h1>${otp}</h1>
+        <h1 style="letter-spacing:4px;">${otp}</h1>
         <p>This OTP will expire in 10 minutes.</p>
+      </div>
       `
-    });
-
-    console.log("OTP EMAIL SENT:", mailInfo.response);
+    );
 
     res.status(201).json({
       message: "OTP sent to your email"
@@ -260,19 +254,18 @@ router.post("/forgot-password", async (req, res) => {
 
     await user.save();
 
-    let mailInfo = await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "DailyTasks Password Reset OTP",
-      html: `
+    await sendEmail(
+      email,
+      "DailyTasks Password Reset OTP",
+      `
+      <div style="font-family:Arial,sans-serif;padding:20px;">
         <h2>Password Reset Request</h2>
         <p>Your OTP is:</p>
-        <h1>${otp}</h1>
+        <h1 style="letter-spacing:4px;">${otp}</h1>
         <p>This OTP will expire in 10 minutes.</p>
+      </div>
       `
-    });
-
-    console.log("RESET OTP EMAIL SENT:", mailInfo.response);
+    );
 
     res.json({
       message: "OTP sent to your email"
@@ -400,25 +393,19 @@ router.get("/test-email", async (req, res) => {
       });
     }
 
-    console.log("Testing email send to:", email);
-    console.log("EMAIL_USER:", process.env.EMAIL_USER);
-    console.log("EMAIL_PASS exists:", !!process.env.EMAIL_PASS);
-
-    let info = await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "DailyTasks Test Email",
-      html: `
+    await sendEmail(
+      email,
+      "DailyTasks Test Email",
+      `
+      <div style="font-family:Arial,sans-serif;padding:20px;">
         <h2>DailyTasks Test Email</h2>
         <p>If you received this, email sending is working.</p>
+      </div>
       `
-    });
-
-    console.log("TEST EMAIL SENT:", info.response);
+    );
 
     res.json({
-      message: "Test email sent",
-      response: info.response
+      message: "Test email sent"
     });
 
   } catch (error) {
