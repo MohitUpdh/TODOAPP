@@ -6,16 +6,24 @@ const User = require("../models/User");
 
 const router = express.Router();
 
-/* EMAIL SENDER */
+/* ================= EMAIL SENDER ================= */
+
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  family: 4,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  }
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000
 });
 
-/* REGISTER WITH OTP */
+/* ================= REGISTER WITH OTP ================= */
+
 router.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -34,17 +42,21 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp =
+      Math.floor(100000 + Math.random() * 900000).toString();
 
-    const otpExpire = Date.now() + 10 * 60 * 1000;
+    const otpExpire =
+      Date.now() + 10 * 60 * 1000;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
     if (oldUser && !oldUser.isVerified) {
       oldUser.name = name;
       oldUser.password = hashedPassword;
       oldUser.otp = otp;
       oldUser.otpExpire = otpExpire;
+
       await oldUser.save();
     } else {
       await User.create({
@@ -57,7 +69,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    await transporter.sendMail({
+    let mailInfo = await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: "DailyTasks Email Verification OTP",
@@ -69,22 +81,23 @@ router.post("/register", async (req, res) => {
       `
     });
 
+    console.log("OTP EMAIL SENT:", mailInfo.response);
+
     res.status(201).json({
       message: "OTP sent to your email"
     });
 
   } catch (error) {
-
     console.log("REGISTER ERROR:", error);
-    
+
     res.status(500).json({
-    message: error.message || "Register failed"
+      message: error.message || "Register failed"
     });
-    
-    }
+  }
 });
 
-/* VERIFY OTP */
+/* ================= VERIFY REGISTER OTP ================= */
+
 router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -109,7 +122,9 @@ router.post("/verify-otp", async (req, res) => {
       });
     }
 
-    if (user.otp !== otp) {
+    const cleanOtp = otp.trim();
+
+    if (user.otp !== cleanOtp) {
       return res.status(400).json({
         message: "Invalid OTP"
       });
@@ -139,8 +154,66 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
+/* ================= LOGIN ================= */
 
-/* FORGOT PASSWORD - SEND OTP */
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "All fields are required"
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "User not found"
+      });
+    }
+
+    if (!user.isVerified) {
+      return res.status(400).json({
+        message: "Please verify your email first"
+      });
+    }
+
+    const isMatch =
+      await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Invalid password"
+      });
+    }
+
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      message: "Login success",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
+  }
+});
+
+/* ================= FORGOT PASSWORD - SEND OTP ================= */
 
 router.post("/forgot-password", async (req, res) => {
   try {
@@ -177,7 +250,7 @@ router.post("/forgot-password", async (req, res) => {
 
     await user.save();
 
-    await transporter.sendMail({
+    let mailInfo = await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: "DailyTasks Password Reset OTP",
@@ -189,19 +262,22 @@ router.post("/forgot-password", async (req, res) => {
       `
     });
 
+    console.log("RESET OTP EMAIL SENT:", mailInfo.response);
+
     res.json({
       message: "OTP sent to your email"
     });
 
   } catch (error) {
+    console.log("FORGOT PASSWORD ERROR:", error);
+
     res.status(500).json({
-      message: "Server error",
-      error: error.message
+      message: error.message || "OTP send failed"
     });
   }
 });
 
-/* VERIFY RESET OTP */
+/* ================= VERIFY RESET OTP ================= */
 
 router.post("/verify-reset-otp", async (req, res) => {
   try {
@@ -221,7 +297,9 @@ router.post("/verify-reset-otp", async (req, res) => {
       });
     }
 
-    if (user.otp !== otp) {
+    const cleanOtp = otp.trim();
+
+    if (user.otp !== cleanOtp) {
       return res.status(400).json({
         message: "Invalid OTP"
       });
@@ -245,8 +323,7 @@ router.post("/verify-reset-otp", async (req, res) => {
   }
 });
 
-
-/* RESET PASSWORD */
+/* ================= RESET PASSWORD ================= */
 
 router.post("/reset-password", async (req, res) => {
   try {
@@ -266,7 +343,9 @@ router.post("/reset-password", async (req, res) => {
       });
     }
 
-    if (user.otp !== otp) {
+    const cleanOtp = otp.trim();
+
+    if (user.otp !== cleanOtp) {
       return res.status(400).json({
         message: "Invalid OTP"
       });
@@ -299,60 +378,44 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
+/* ================= TEST EMAIL ROUTE ================= */
 
-/* LOGIN */
-router.post("/login", async (req, res) => {
+router.get("/test-email", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = req.query.email;
 
-    if (!email || !password) {
+    if (!email) {
       return res.status(400).json({
-        message: "All fields are required"
+        message: "Email is required"
       });
     }
 
-    const user = await User.findOne({ email });
+    console.log("Testing email send to:", email);
+    console.log("EMAIL_USER:", process.env.EMAIL_USER);
+    console.log("EMAIL_PASS exists:", !!process.env.EMAIL_PASS);
 
-    if (!user) {
-      return res.status(400).json({
-        message: "User not found"
-      });
-    }
+    let info = await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "DailyTasks Test Email",
+      html: `
+        <h2>DailyTasks Test Email</h2>
+        <p>If you received this, email sending is working.</p>
+      `
+    });
 
-    if (!user.isVerified) {
-      return res.status(400).json({
-        message: "Please verify your email first"
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        message: "Invalid password"
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    console.log("TEST EMAIL SENT:", info.response);
 
     res.json({
-      message: "Login success",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email
-      }
+      message: "Test email sent",
+      response: info.response
     });
 
   } catch (error) {
+    console.log("TEST EMAIL ERROR:", error);
+
     res.status(500).json({
-      message: "Server error",
-      error: error.message
+      message: error.message
     });
   }
 });
